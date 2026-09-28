@@ -60,18 +60,6 @@ import {
       return;
     }
 
-    var localStorageKey = "graph-visited";
-
-    function getVisited() {
-      return new Set(JSON.parse(localStorage.getItem(localStorageKey) || "[]"));
-    }
-
-    function addToVisited(slug) {
-      var visited = getVisited();
-      visited.add(slug);
-      localStorage.setItem(localStorageKey, JSON.stringify(Array.from(visited)));
-    }
-
     // Resolves CSS color values containing calc()/var() that PixiJS cannot parse.
     // Uses a temp DOM element so the browser's CSS engine evaluates the expression.
     function resolveColor(value, fallback) {
@@ -89,7 +77,6 @@ import {
     async function renderGraph(graph, fullSlug, renderGeneration) {
       var slug = simplifySlug(fullSlug);
       if (slug === "") slug = "index";
-      var visited = getVisited();
       removeAllChildren(graph);
 
       if (renderGeneration !== undefined && renderGeneration !== currentRenderGeneration) {
@@ -117,7 +104,14 @@ import {
         var dataRaw = await fetchData;
         data = new Map();
         for (var key in dataRaw) {
-          data.set(simplifySlug(key), dataRaw[key]);
+          var simple = simplifySlug(key);
+          // Rifted: skip virtual listing pages (folder indexes "X/", tag pages "tags/...",
+          // the changelog) so they don't show up as orphan nodes; tag nodes are still
+          // synthesized from page tags below when showTags is on. Home ("/") is kept.
+          var isVirtual =
+            simple.endsWith("/") || simple.startsWith("tags/") || simple === "changelog";
+          if (isVirtual && simple !== "/") continue;
+          data.set(simple, dataRaw[key]);
         }
       } catch (err) {
         console.error("[Graph] Error loading data:", err);
@@ -323,7 +317,7 @@ import {
           return tertiary;
         } else {
           var typeTag = (d.tags || []).find(function (t) {
-            return tagColors[t];
+            return Object.hasOwn(tagColors, t);
           });
           return typeTag ? tagColors[typeTag] : gray;
         }
@@ -730,7 +724,6 @@ import {
       cleanupLocal();
       var thisGeneration = ++currentRenderGeneration;
       var slug = getSlugFromUrl();
-      addToVisited(slug);
 
       var localContainers = document.querySelectorAll(".graph-container");
       for (var i = 0; i < localContainers.length; i++) {
@@ -748,10 +741,7 @@ import {
       }
     }
 
-    function handleNav(e) {
-      var slug = e.detail ? e.detail.url : getSlugFromUrl();
-      addToVisited(simplifySlug(slug));
-
+    function handleNav() {
       renderLocal();
 
       globalContainers = Array.from(document.querySelectorAll(".global-graph-outer"));
